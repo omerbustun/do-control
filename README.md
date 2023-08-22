@@ -1,3 +1,6 @@
+![GitHub last commit](https://img.shields.io/github/last-commit/omerbustun/do-control?logo=Github)
+![GitHub code size in bytes](https://img.shields.io/github/languages/code-size/omerbustun/do-control?logo=Github)
+
 do-control
 ==========
 
