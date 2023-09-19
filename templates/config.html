@@ -1,0 +1,46 @@
+{% extends 'base.html' %}
+
+{% block body %}
+  <div class="page-wrapper">
+    <div class="page-header d-print-none">
+      <div class="container-xl">
+        <div class="row g-2 align-items-center">
+          <div class="col">
+            <h2 class="page-title">Configuration</h2>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="page-body">
+      <div class="container-xl">
+        <!-- Display Messages -->
+        {% if messages %}
+          <div class="messages mt-3">
+            {% for message in messages %}
+              <div class="alert alert-{{ message.tags }} alert-dismissible" role="alert">
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                {{ message }}
+              </div>
+            {% endfor %}
+          </div>
+        {% endif %}
+
+        <form method="post">
+          {% csrf_token %}
+          <div class="card">
+            <div class="card-body">
+              <div class="mb-3">
+                <label class="form-label">DigitalOcean Token</label>
+                {{ form.digitalocean_token }}
+              </div>
+            </div>
+            <div class="card-footer">
+              <button type="submit" class="btn btn-primary">Save</button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+{% endblock %}
