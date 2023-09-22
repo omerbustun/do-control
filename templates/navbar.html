@@ -65,27 +65,30 @@
               <div class="list-group list-group-flush list-group-hoverable">
                 {% for notification in latest_notifications %}
                 <div class="list-group-item">
-                    <div class="row align-items-center">
-                        <div class="col-auto">
-                            <span class="status-dot {% if not notification.read %}status-dot-animated bg-red{% endif %} d-block"></span>
-                        </div>
-                        <div class="col text-truncate">
-                            <a href="#" class="text-body d-block">{{ notification.actor }} {{ notification.verb }}</a>
-                            <div class="d-block text-muted text-truncate mt-n1">{{ notification.description }}</div>
-                        </div>
-                        <div class="col-auto">
-                            <a href="{% url 'mark_notification_as_read' notification.id %}" class="list-group-item-actions">
-                                Mark as read
-                            </a>
-                        </div>
+                  <div class="row align-items-center">
+                    <div class="col-auto">
+                      <span
+                        class="status-dot {% if not notification.read %}status-dot-animated bg-red{% endif %} d-block"></span>
                     </div>
+                    <div class="col text-truncate">
+                      <a href="#" class="text-body d-block">{{ notification.actor }} {{ notification.verb }}</a>
+                      <div class="d-block text-muted text-truncate mt-n1">{{ notification.description }}</div>
+                    </div>
+                    <div class="col-auto">
+                      <a href="{% url 'mark_notification_as_read' notification.id %}" class="list-group-item-actions">
+                        Mark as read
+                      </a>
+                    </div>
+                  </div>
                 </div>
-                {% empty %}
-                <div class="list-group-item">You have no notifications.</div>
                 {% endfor %}
+                {% if latest_notifications %}
                 <a href="{% url 'accounts:all_notifications' %}" class="list-group-item">See all notifications</a>
-            </div>
-            
+                {% else %}
+                <div class="list-group-item">You have no notifications.</div>
+                {% endif %}
+              </div>
+
             </div>
           </div>
         </div>
