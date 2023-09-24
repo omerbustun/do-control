@@ -50,11 +50,11 @@
                             {% endif %}
                         </div>
                         <div class="col">
-                            <a href="#" class="text-body d-block"><strong>{{ notification.actor }}</strong> {{
-                                notification.verb }}</a>
+                            <a href="#" class="text-body d-block"><strong>{{ notification.actor }}</strong>
+                                {{ notification.verb }}</a>
                             <div class="d-block text-muted text-truncate mt-n1">{{ notification.description }}</div>
-                            <div class="d-block text-muted text-truncate mt-n1">{{
-                                notification.timestamp|date:"SHORT_DATETIME_FORMAT" }}</div>
+                            <div class="d-block text-muted text-truncate mt-n1">
+                                {{ notification.timestamp|date:"SHORT_DATETIME_FORMAT" }}</div>
                         </div>
                         <div class="col-auto">
                             <!-- Display 'Mark as read' button only if the notification is unread -->

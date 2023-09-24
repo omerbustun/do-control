@@ -98,10 +98,8 @@
                     </div>
                     <div class="col">
                       <a href="{% url 'accounts:all_notifications' %}"
-                        class="text-body d-block text-truncate"><strong>{{ notification.actor }}</strong> {{
-                        notification.verb }}</a>
-                      <div class="d-block text-muted text-truncate mt-n1">{{
-                        notification.timestamp|date:"SHORT_DATETIME_FORMAT" }}</div>
+                        class="text-body d-block text-truncate"><strong>{{ notification.actor }}</strong> {{ notification.verb }}</a>
+                      <div class="d-block text-muted text-truncate mt-n1">{{ notification.timestamp|date:"SHORT_DATETIME_FORMAT" }}</div>
                     </div>
 
                   </div>
