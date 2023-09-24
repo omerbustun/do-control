@@ -57,7 +57,7 @@
             <span class="badge bg-red"></span>
             {% endif %}
           </a>
-          <div class="dropdown-menu dropdown-menu-arrow dropdown-menu-end dropdown-menu-card">
+          <div class="dropdown-menu dropdown-menu-arrow dropdown-menu-end dropdown-menu-card" style="min-width: 400px;">
             <div class="card">
               <div class="card-header">
                 <h3 class="card-title">Last updates</h3>
@@ -67,18 +67,43 @@
                 <div class="list-group-item">
                   <div class="row align-items-center">
                     <div class="col-auto">
-                      <span
-                        class="status-dot {% if not notification.read %}status-dot-animated bg-red{% endif %} d-block"></span>
+                      <!-- Mail icon -->
+                      {% if notification.unread %}
+                      <!-- Closed mail icon for unread notifications -->
+                      <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-mail-filled"
+                        width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
+                        <path
+                          d="M22 7.535v9.465a3 3 0 0 1 -2.824 2.995l-.176 .005h-14a3 3 0 0 1 -2.995 -2.824l-.005 -.176v-9.465l9.445 6.297l.116 .066a1 1 0 0 0 .878 0l.116 -.066l9.445 -6.297z"
+                          stroke-width="0" fill="currentColor"></path>
+                        <path
+                          d="M19 4c1.08 0 2.027 .57 2.555 1.427l-9.555 6.37l-9.555 -6.37a2.999 2.999 0 0 1 2.354 -1.42l.201 -.007h14z"
+                          stroke-width="0" fill="currentColor"></path>
+                      </svg>
+                      {% else %}
+                      <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-mail-opened-filled"
+                        width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
+                        <path
+                          d="M14.872 14.287l6.522 6.52a2.996 2.996 0 0 1 -2.218 1.188l-.176 .005h-14a2.995 2.995 0 0 1 -2.394 -1.191l6.521 -6.522l2.318 1.545l.116 .066a1 1 0 0 0 .878 0l.116 -.066l2.317 -1.545z"
+                          stroke-width="0" fill="currentColor"></path>
+                        <path d="M2 9.535l5.429 3.62l-5.429 5.43z" stroke-width="0" fill="currentColor"></path>
+                        <path d="M22 9.535v9.05l-5.43 -5.43z" stroke-width="0" fill="currentColor"></path>
+                        <path d="M12.44 2.102l.115 .066l8.444 5.629l-8.999 6l-9 -6l8.445 -5.63a1 1 0 0 1 .994 -.065z"
+                          stroke-width="0" fill="currentColor"></path>
+                      </svg>
+                      {% endif %}
                     </div>
-                    <div class="col text-truncate">
-                      <a href="#" class="text-body d-block">{{ notification.actor }} {{ notification.verb }}</a>
-                      <div class="d-block text-muted text-truncate mt-n1">{{ notification.description }}</div>
+                    <div class="col">
+                      <a href="{% url 'accounts:all_notifications' %}"
+                        class="text-body d-block text-truncate"><strong>{{ notification.actor }}</strong> {{
+                        notification.verb }}</a>
+                      <div class="d-block text-muted text-truncate mt-n1">{{
+                        notification.timestamp|date:"SHORT_DATETIME_FORMAT" }}</div>
                     </div>
-                    <div class="col-auto">
-                      <a href="{% url 'mark_notification_as_read' notification.id %}" class="list-group-item-actions">
-                        Mark as read
-                      </a>
-                    </div>
+
                   </div>
                 </div>
                 {% endfor %}
@@ -88,6 +113,8 @@
                 <div class="list-group-item">You have no notifications.</div>
                 {% endif %}
               </div>
+
+
 
             </div>
           </div>

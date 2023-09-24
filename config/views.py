@@ -2,6 +2,7 @@ from django.shortcuts import render, redirect
 from .models import Configuration
 from .forms import ConfigurationForm
 from django.contrib import messages
+from notifications.signals import notify
 
 
 def config_view(request):
@@ -14,6 +15,15 @@ def config_view(request):
         if form.is_valid():
             form.save()
             messages.success(request, "Configuration saved successfully!")
+
+            # Generate a notification
+            notify.send(
+                request.user,
+                recipient=request.user,
+                verb="updated the configuration",
+                description="You have successfully updated the system configuration.",
+            )
+
             return redirect("config_view")
     else:
         if config.digitalocean_token:

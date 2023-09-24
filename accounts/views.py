@@ -14,12 +14,21 @@ class CustomLogoutView(LogoutView):
 
 @login_required
 def home_view(request):
-    latest_notifications = Notification.objects.filter(recipient=request.user).order_by(
-        "-timestamp"
-    )[:5]
+    latest_notifications = Notification.objects.filter(
+        recipient=request.user
+    ).order_by("-timestamp")[:5]
+    unread_notifications_count = Notification.objects.filter(
+        recipient=request.user, unread=True
+    ).count()
     return render(
-        request, "dashboard.html", {"latest_notifications": latest_notifications}
+        request,
+        "dashboard.html",
+        {
+            "latest_notifications": latest_notifications,
+            "unread_notifications_count": unread_notifications_count,
+        },
     )
+
 
 
 def base_view(request):
@@ -43,4 +52,4 @@ def all_notifications(request):
 def mark_notification_as_read(request, notification_id):
     notification = Notification.objects.get(id=notification_id, recipient=request.user)
     notification.mark_as_read()
-    return redirect("all_notifications")
+    return redirect("accounts:all_notifications")
