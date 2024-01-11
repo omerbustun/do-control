@@ -1,3 +1,4 @@
 Django==4.2.4
 python-decouple==3.8
 python_digitalocean==1.17.0
+django-notifications-hq==1.8.3
