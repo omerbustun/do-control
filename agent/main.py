@@ -8,6 +8,7 @@ import uuid
 import threading
 import requests
 from typing import Dict, Any, Optional
+from agent.executor.command import CommandExecutor
 
 # Add the parent directory to the path so we can import common modules
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -35,7 +36,10 @@ class Agent:
         
         # Agent state
         self.status = AgentStatus.READY
-        self.current_command = None
+        self.current_execution = None
+        
+        # Initialize the command executor
+        self.executor = CommandExecutor()
         self.current_execution = None
         
     def start(self) -> None:
@@ -150,9 +154,53 @@ class Agent:
         """
         Execute a command directly
         """
-        # Implementation will go here
-        pass
+        command_id = command.get('command_id')
+        cmd = command.get('command')
+        timeout = command.get('timeout')
+
+        if not cmd:
+            logger.error(f"Invalid command, missing 'command' field: {command}")
+            return
+
+        # Execute command
+        result = self.executor.execute(command_id, cmd, timeout)
+
+        # Send status update
+        status_details = {"command_id": command_id, "execution_status": result["status"]}
+        if "message" in result:
+            status_details["message"] = result["message"]
+
+        self._send_status(AgentStatus.BUSY, status_details)
+
+        # If execution is successful, wait for it to complete
+        if result["status"] == "started":
+            # Wait for result
+            while True:
+                time.sleep(1)
+                result = self.executor.get_result(command_id)
+                if result:
+                    break
+                
+            # Send result
+            self._send_command_result(command_id, result)
+    
+    def _send_command_result(self, command_id: str, result: Dict[str, Any]) -> None:
+        """
+        Send command execution result
+        """
+        message = {
+            "agent_id": self.id,
+            "command_id": command_id,
+            "timestamp": time.time(),
+            "result": result
+        }
         
+        self.broker.publish(
+            exchange_name="do-control.status",
+            routing_key=f"agent.{self.id}.result",
+            message=message
+        )
+
     def _prepare_execution(self, command: Dict[str, Any]) -> None:
         """
         Prepare for test execution

@@ -1,10 +1,12 @@
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Tuple
 from console.provisioning.do_client import DigitalOceanClient
-from common.models import Droplet, DropletStatus
+from common.models import Droplet, DropletStatus, AgentStatus
 from sqlalchemy.orm import Session
 from console.api.models.db_models import DBDroplet
 import json
 import logging
+from console.provisioning.deployer import AgentDeployer
+from console.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -207,3 +209,34 @@ class ProvisioningService:
             created_at=db_droplet.created_at,
             tags=json.loads(db_droplet.tags) if db_droplet.tags else []
         )
+    
+    def deploy_agent(self, droplet_id: str, ssh_key_path: Optional[str] = None) -> Tuple[bool, str]:
+        """
+        Deploy agent to a droplet
+        """
+        # Get droplet
+        droplet = self.get_droplet(droplet_id)
+        if not droplet:
+            return False, f"Droplet {droplet_id} not found"
+
+        # Check if droplet is active
+        if droplet.status != DropletStatus.ACTIVE:
+            return False, f"Droplet {droplet_id} is not active"
+
+        # Deployer
+        deployer = AgentDeployer(
+            console_url=f"http://{settings.API_HOST}:{settings.API_PORT}",
+            rabbitmq_url=settings.RABBITMQ_URL
+        )
+
+        # Deploy agent
+        success, message = deployer.deploy_agent(droplet.ip_address, ssh_key_path)
+
+        if success:
+            # Update agent status in database
+            db_droplet = self.db.query(DBDroplet).filter(DBDroplet.id == droplet_id).first()
+            if db_droplet:
+                db_droplet.agent_status = AgentStatus.INSTALLING.value
+                self.db.commit()
+
+        return success, message

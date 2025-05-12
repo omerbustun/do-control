@@ -99,3 +99,17 @@ async def delete_droplet(droplet_id: str, db: Session = Depends(get_db)):
     if not success:
         raise HTTPException(status_code=404, detail="Droplet could not be deleted")
     return success
+
+class AgentDeploy(BaseModel):
+    ssh_key_path: Optional[str] = None
+
+@router.post("/{droplet_id}/deploy-agent", response_model=dict)
+async def deploy_agent(droplet_id: str, params: AgentDeploy, db: Session = Depends(get_db)):
+    """
+    Deploy DO-Control agent to a droplet
+    """
+    service = ProvisioningService(db)
+    success, message = service.deploy_agent(droplet_id, params.ssh_key_path)
+    if not success:
+        raise HTTPException(status_code=400, detail=message)
+    return {"success": success, "message": message}
