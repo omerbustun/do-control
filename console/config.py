@@ -1,5 +1,5 @@
 import os
-from pydantic import BaseSettings
+from pydantic_settings import BaseSettings
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -14,8 +14,12 @@ class Settings(BaseSettings):
     # DigitalOcean
     DO_API_TOKEN: str = os.getenv("DO_API_TOKEN")
     
-    # RabbitMQ
-    RABBITMQ_URL: str = os.getenv("RABBITMQ_URL", "amqp://guest:guest@localhost:5672/")
+    # Kafka
+    KAFKA_BOOTSTRAP_SERVERS: str = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
+    KAFKA_SECURITY_PROTOCOL: str = os.getenv("KAFKA_SECURITY_PROTOCOL", "PLAINTEXT")
+    KAFKA_SASL_MECHANISM: str = os.getenv("KAFKA_SASL_MECHANISM", "PLAIN")
+    KAFKA_SASL_USERNAME: str = os.getenv("KAFKA_SASL_USERNAME", "")
+    KAFKA_SASL_PASSWORD: str = os.getenv("KAFKA_SASL_PASSWORD", "")
     
     # Security
     SECRET_KEY: str = os.getenv("SECRET_KEY", "development_secret_key")

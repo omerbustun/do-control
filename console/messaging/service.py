@@ -1,39 +1,18 @@
 from typing import Dict, Any, List, Optional
-from common.messaging import MessageBroker, ExchangeType
+from common.messaging import MessageBroker, TopicType
 from console.config import settings
 import logging
 
 logger = logging.getLogger(__name__)
 
 class MessagingService:
-    def __init__(self, connection_url: Optional[str] = None):
-        self.connection_url = connection_url or settings.RABBITMQ_URL
-        self.broker = MessageBroker(self.connection_url)
-        self._setup_exchanges()
-        
-    def _setup_exchanges(self) -> None:
-        """
-        Initialize required exchanges
-        """
-        # Commands exchange for distributing commands to agents
-        self.broker.declare_exchange("do-control.commands", ExchangeType.FANOUT)
-        
-        # Status exchange for agent status updates
-        self.broker.declare_exchange("do-control.status", ExchangeType.TOPIC)
-        
-        # Metrics exchange for collecting metrics
-        self.broker.declare_exchange("do-control.metrics", ExchangeType.TOPIC)
-        
-    def setup_agent_queues(self, agent_id: str) -> None:
-        """
-        Set up queues for a specific agent
-        """
-        # Commands queue (receives from commands exchange)
-        self.broker.declare_queue(f"do-control.agent.{agent_id}.commands")
-        self.broker.bind_queue(
-            queue_name=f"do-control.agent.{agent_id}.commands",
-            exchange_name="do-control.commands",
-            routing_key=""
+    def __init__(self):
+        self.broker = MessageBroker(
+            bootstrap_servers=settings.KAFKA_BOOTSTRAP_SERVERS,
+            security_protocol=settings.KAFKA_SECURITY_PROTOCOL,
+            sasl_mechanism=settings.KAFKA_SASL_MECHANISM,
+            sasl_username=settings.KAFKA_SASL_USERNAME,
+            sasl_password=settings.KAFKA_SASL_PASSWORD
         )
         
     def send_command(self, command: Dict[str, Any]) -> bool:
@@ -41,8 +20,8 @@ class MessagingService:
         Send a command to all agents
         """
         return self.broker.publish(
-            exchange_name="do-control.commands",
-            routing_key="",
+            topic=TopicType.COMMANDS,
+            key="broadcast",
             message=command
         )
         
@@ -51,8 +30,8 @@ class MessagingService:
         Send a command to a specific agent
         """
         return self.broker.publish(
-            exchange_name="",  # Default exchange
-            routing_key=f"do-control.agent.{agent_id}.commands",
+            topic=TopicType.COMMANDS,
+            key=agent_id,
             message=command
         )
         
@@ -60,36 +39,20 @@ class MessagingService:
         """
         Register a handler for agent status updates
         """
-        # Create and bind queue for status updates
-        self.broker.declare_queue("do-control.console.status")
-        self.broker.bind_queue(
-            queue_name="do-control.console.status",
-            exchange_name="do-control.status",
-            routing_key="agent.*.#"  # Listen to all agent status updates
-        )
-        
-        # Start consuming in a background thread
         self.broker.start_consuming_in_thread(
-            queue_name="do-control.console.status",
+            topic=TopicType.STATUS,
+            group_id="console-status",
             callback=callback,
-            auto_ack=True
+            auto_commit=True
         )
         
     def register_metrics_handler(self, callback) -> None:
         """
         Register a handler for metrics collection
         """
-        # Create and bind queue for metrics
-        self.broker.declare_queue("do-control.console.metrics")
-        self.broker.bind_queue(
-            queue_name="do-control.console.metrics",
-            exchange_name="do-control.metrics",
-            routing_key="#"  # Listen to all metrics
-        )
-        
-        # Start consuming in a background thread
         self.broker.start_consuming_in_thread(
-            queue_name="do-control.console.metrics",
+            topic=TopicType.METRICS,
+            group_id="console-metrics",
             callback=callback,
-            auto_ack=True
+            auto_commit=True
         )

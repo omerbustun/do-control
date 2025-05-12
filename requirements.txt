@@ -5,7 +5,6 @@ pydantic>=2.0.0
 python-dotenv>=1.0.0
 psycopg2-binary>=2.9.6
 alembic>=1.11.0
-pika>=1.3.2
 requests>=2.31.0
 pydo>=0.1.0
 cryptography>=41.0.0
@@ -14,3 +13,7 @@ httpx>=0.24.1
 influxdb-client>=1.36.0
 psutil>=5.9.0
 paramiko>=2.9.0
+python-jose[cryptography]>=3.3.0
+pydantic-settings>=2.0.0
+python-multipart>=0.0.7
+confluent-kafka==2.3.0

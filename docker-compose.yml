@@ -1,20 +1,26 @@
 version: '3.8'
-
 services:
-  api:
-    build: .
+  console:
+    build:
+      context: .
+      dockerfile: Dockerfile
     ports:
       - "8000:8000"
     volumes:
       - .:/app
     depends_on:
       - db
-      - rabbitmq
+      - kafka
     environment:
-      - DATABASE_URL=postgresql://postgres:postgres@db/do_control
-      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
-    command: uvicorn console.main:app --host 0.0.0.0 --port 8000 --reload
-
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/do_control
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+      - KAFKA_SECURITY_PROTOCOL=PLAINTEXT
+      - API_HOST=console
+      - API_PORT=8000
+      - DO_API_TOKEN=${DO_API_TOKEN}
+    command: >
+      sh -c "python console/scripts/init_kafka.py &&
+             uvicorn console.main:app --host 0.0.0.0 --port 8000"
   db:
     image: postgres:14
     volumes:
@@ -25,12 +31,40 @@ services:
       - POSTGRES_DB=do_control
     ports:
       - "5432:5432"
-
-  rabbitmq:
-    image: rabbitmq:3-management
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.3.0
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
     ports:
-      - "5672:5672"
-      - "15672:15672"
-
+      - "2181:2181"
+  kafka:
+    image: confluentinc/cp-kafka:7.3.0
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+  agent:
+    build:
+      context: .
+      dockerfile: Dockerfile.agent
+    depends_on:
+      - kafka
+    environment:
+      - CONSOLE_URL=http://console:8000
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+      - KAFKA_SECURITY_PROTOCOL=PLAINTEXT
+    deploy:
+      mode: replicated
+      replicas: 3
+      
 volumes:
   postgres_data:

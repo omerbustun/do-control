@@ -18,7 +18,7 @@ apt-get install -y python3 python3-pip
 mkdir -p /opt/do-control-agent
 
 # Install Python dependencies
-pip3 install pika psutil requests
+pip3 install confluent-kafka psutil requests
 
 # Create agent service
 cat > /etc/systemd/system/do-control-agent.service << 'EOL'
@@ -33,7 +33,11 @@ WorkingDirectory=/opt/do-control-agent
 ExecStart=/usr/bin/python3 /opt/do-control-agent/main.py
 Restart=always
 Environment=CONSOLE_URL={console_url}
-Environment=RABBITMQ_URL={rabbitmq_url}
+Environment=KAFKA_BOOTSTRAP_SERVERS={kafka_bootstrap_servers}
+Environment=KAFKA_SECURITY_PROTOCOL={kafka_security_protocol}
+Environment=KAFKA_SASL_MECHANISM={kafka_sasl_mechanism}
+Environment=KAFKA_SASL_USERNAME={kafka_sasl_username}
+Environment=KAFKA_SASL_PASSWORD={kafka_sasl_password}
 
 [Install]
 WantedBy=multi-user.target
@@ -48,9 +52,13 @@ echo "DO-Control Agent installed successfully"
 """
 
 class AgentDeployer:
-    def __init__(self, console_url: str, rabbitmq_url: str):
+    def __init__(self, console_url: str, kafka_bootstrap_servers: str, kafka_security_protocol: str, kafka_sasl_mechanism: str, kafka_sasl_username: str, kafka_sasl_password: str):
         self.console_url = console_url
-        self.rabbitmq_url = rabbitmq_url
+        self.kafka_bootstrap_servers = kafka_bootstrap_servers
+        self.kafka_security_protocol = kafka_security_protocol
+        self.kafka_sasl_mechanism = kafka_sasl_mechanism
+        self.kafka_sasl_username = kafka_sasl_username
+        self.kafka_sasl_password = kafka_sasl_password
     
     def deploy_agent(self, ip_address: str, ssh_key_path: Optional[str] = None) -> Tuple[bool, str]:
         """
@@ -74,7 +82,11 @@ class AgentDeployer:
             # Create setup script
             script_content = AGENT_SETUP_SCRIPT.format(
                 console_url=self.console_url,
-                rabbitmq_url=self.rabbitmq_url
+                kafka_bootstrap_servers=self.kafka_bootstrap_servers,
+                kafka_security_protocol=self.kafka_security_protocol,
+                kafka_sasl_mechanism=self.kafka_sasl_mechanism,
+                kafka_sasl_username=self.kafka_sasl_username,
+                kafka_sasl_password=self.kafka_sasl_password
             )
             
             # Create temporary file for script
@@ -140,11 +152,9 @@ hostname = socket.gethostname()
 ip_address = socket.gethostbyname(hostname)
 
 console_url = os.environ.get("CONSOLE_URL")
-rabbitmq_url = os.environ.get("RABBITMQ_URL")
 
 print(f"Starting agent {agent_id} on {hostname} ({ip_address})")
 print(f"Console URL: {console_url}")
-print(f"RabbitMQ URL: {rabbitmq_url}")
 
 # Register with console
 try:

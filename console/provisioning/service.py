@@ -226,7 +226,11 @@ class ProvisioningService:
         # Deployer
         deployer = AgentDeployer(
             console_url=f"http://{settings.API_HOST}:{settings.API_PORT}",
-            rabbitmq_url=settings.RABBITMQ_URL
+            kafka_bootstrap_servers=settings.KAFKA_BOOTSTRAP_SERVERS,
+            kafka_security_protocol=settings.KAFKA_SECURITY_PROTOCOL,
+            kafka_sasl_mechanism=settings.KAFKA_SASL_MECHANISM,
+            kafka_sasl_username=settings.KAFKA_SASL_USERNAME,
+            kafka_sasl_password=settings.KAFKA_SASL_PASSWORD
         )
 
         # Deploy agent

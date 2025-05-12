@@ -1,6 +1,9 @@
-FROM python:3.14
+FROM python:alpine
 
 WORKDIR /app
+
+# Install system dependencies
+RUN apk add --no-cache gcc python3-dev musl-dev linux-headers librdkafka-dev
 
 COPY requirements.txt .
 

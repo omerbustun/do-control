@@ -1,10 +1,12 @@
 from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
+import time
 
 from console.database import engine, Base, get_db
 from console.config import settings
 from console.api.routes import droplets, tests, metrics, agents, auth
+from console.messaging.service import MessagingService
 
 # Create tables
 Base.metadata.create_all(bind=engine)
@@ -23,6 +25,26 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Initialize messaging service
+messaging_service = None
+
+@app.on_event("startup")
+async def startup_event():
+    global messaging_service
+    
+    # Wait for RabbitMQ to be fully started
+    max_retries = 10
+    retry_count = 0
+    
+    while retry_count < max_retries:
+        try:
+            messaging_service = MessagingService()
+            break
+        except Exception as e:
+            print(f"Failed to connect to RabbitMQ: {e}")
+            retry_count += 1
+            time.sleep(5)  # Wait 5 seconds before retrying
+
 @app.get("/")
 async def root():
     return {"message": "Welcome to DO-Control API", "version": "0.1.0"}
@@ -30,7 +52,6 @@ async def root():
 @app.get("/health")
 async def health(db: Session = Depends(get_db)):
     try:
-        # Try to execute a simple query to check DB connection
         db.execute("SELECT 1")
         db_status = "OK"
     except Exception as e:

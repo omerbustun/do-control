@@ -1,137 +1,140 @@
-import pika
 import json
 from typing import Dict, Any, Callable, Optional
 from enum import Enum
 import threading
 import logging
 import time
+from confluent_kafka import Producer, Consumer, KafkaError, KafkaException
 
 logger = logging.getLogger(__name__)
 
-class ExchangeType(str, Enum):
-    FANOUT = "fanout"
-    DIRECT = "direct"
-    TOPIC = "topic"
-    HEADERS = "headers"
+class TopicType(str, Enum):
+    COMMANDS = "do-control.commands"
+    STATUS = "do-control.status"
+    METRICS = "do-control.metrics"
 
 class MessageBroker:
-    def __init__(self, connection_url: str, reconnect_delay: int = 5):
-        self.connection_url = connection_url
-        self.reconnect_delay = reconnect_delay
-        self.connection = None
-        self.channel = None
-        self._connect()
+    def __init__(self, bootstrap_servers: str, security_protocol: str = "PLAINTEXT",
+                 sasl_mechanism: str = "PLAIN", sasl_username: str = "", sasl_password: str = ""):
+        self.bootstrap_servers = bootstrap_servers
+        self.security_protocol = security_protocol
+        self.sasl_mechanism = sasl_mechanism
+        self.sasl_username = sasl_username
+        self.sasl_password = sasl_password
         
-    def _connect(self) -> None:
-        try:
-            parameters = pika.URLParameters(self.connection_url)
-            self.connection = pika.BlockingConnection(parameters)
-            self.channel = self.connection.channel()
-            logger.info("Connected to RabbitMQ")
-        except Exception as e:
-            logger.error(f"Failed to connect to RabbitMQ: {e}")
-            self.connection = None
-            self.channel = None
-            
-    def _ensure_connection(self) -> bool:
-        if self.connection is None or self.channel is None or self.connection.is_closed:
-            try:
-                self._connect()
-            except Exception as e:
-                logger.error(f"Failed to reconnect: {e}")
-                return False
-        return self.connection is not None and self.channel is not None
+        # Initialize producer
+        self.producer = self._create_producer()
         
-    def declare_exchange(self, exchange_name: str, exchange_type: ExchangeType) -> bool:
-        if not self._ensure_connection():
-            return False
+        # Initialize consumer (will be created per topic)
+        self.consumers = {}
+        
+    def _create_producer(self) -> Producer:
+        """Create a Kafka producer"""
+        config = {
+            'bootstrap.servers': self.bootstrap_servers,
+            'security.protocol': self.security_protocol,
+        }
+        
+        if self.security_protocol != "PLAINTEXT":
+            config.update({
+                'sasl.mechanism': self.sasl_mechanism,
+                'sasl.username': self.sasl_username,
+                'sasl.password': self.sasl_password
+            })
             
+        return Producer(config)
+        
+    def _create_consumer(self, group_id: str) -> Consumer:
+        """Create a Kafka consumer"""
+        config = {
+            'bootstrap.servers': self.bootstrap_servers,
+            'group.id': group_id,
+            'auto.offset.reset': 'earliest',
+            'enable.auto.commit': False,
+            'security.protocol': self.security_protocol,
+        }
+        
+        if self.security_protocol != "PLAINTEXT":
+            config.update({
+                'sasl.mechanism': self.sasl_mechanism,
+                'sasl.username': self.sasl_username,
+                'sasl.password': self.sasl_password
+            })
+            
+        return Consumer(config)
+        
+    def publish(self, topic: str, key: str, message: Dict[str, Any]) -> bool:
+        """Publish a message to a topic"""
         try:
-            self.channel.exchange_declare(
-                exchange=exchange_name,
-                exchange_type=exchange_type.value,
-                durable=True
+            self.producer.produce(
+                topic=topic,
+                key=key,
+                value=json.dumps(message).encode(),
+                callback=self._delivery_report
             )
+            self.producer.poll(0)  # Trigger delivery report callbacks
             return True
         except Exception as e:
-            logger.error(f"Failed to declare exchange {exchange_name}: {e}")
+            logger.error(f"Failed to publish message to {topic}: {e}")
             return False
             
-    def declare_queue(self, queue_name: str, durable: bool = True) -> bool:
-        if not self._ensure_connection():
-            return False
+    def _delivery_report(self, err, msg):
+        """Delivery report callback"""
+        if err is not None:
+            logger.error(f"Message delivery failed: {err}")
+        else:
+            logger.debug(f"Message delivered to {msg.topic()} [{msg.partition()}]")
+            
+    def consume(self, topic: str, group_id: str, callback: Callable, auto_commit: bool = False) -> None:
+        """Consume messages from a topic"""
+        topic_name = topic.value if hasattr(topic, 'value') else topic
+
+        if topic_name not in self.consumers:
+            self.consumers[topic_name] = self._create_consumer(group_id)
+            self.consumers[topic_name].subscribe([topic_name])
             
         try:
-            self.channel.queue_declare(queue=queue_name, durable=durable)
-            return True
+            while True:
+                msg = self.consumers[topic].poll(1.0)
+                if msg is None:
+                    continue
+                if msg.error():
+                    if msg.error().code() == KafkaError._PARTITION_EOF:
+                        continue
+                    else:
+                        logger.error(f"Consumer error: {msg.error()}")
+                        break
+                        
+                try:
+                    value = json.loads(msg.value().decode())
+                    callback(msg.key().decode(), value)
+                    
+                    if auto_commit:
+                        self.consumers[topic].commit(msg)
+                except Exception as e:
+                    logger.error(f"Error processing message: {e}")
+                    
         except Exception as e:
-            logger.error(f"Failed to declare queue {queue_name}: {e}")
-            return False
+            logger.error(f"Error consuming from topic {topic}: {e}")
             
-    def bind_queue(self, queue_name: str, exchange_name: str, routing_key: str = "") -> bool:
-        if not self._ensure_connection():
-            return False
-            
-        try:
-            self.channel.queue_bind(
-                queue=queue_name,
-                exchange=exchange_name,
-                routing_key=routing_key
-            )
-            return True
-        except Exception as e:
-            logger.error(f"Failed to bind queue {queue_name} to exchange {exchange_name}: {e}")
-            return False
-            
-    def publish(self, exchange_name: str, routing_key: str, message: Dict[str, Any]) -> bool:
-        if not self._ensure_connection():
-            return False
-            
-        try:
-            self.channel.basic_publish(
-                exchange=exchange_name,
-                routing_key=routing_key,
-                body=json.dumps(message).encode(),
-                properties=pika.BasicProperties(
-                    delivery_mode=2,  # make message persistent
-                    content_type='application/json'
-                )
-            )
-            return True
-        except Exception as e:
-            logger.error(f"Failed to publish message to {exchange_name}: {e}")
-            return False
-    
-    def consume(self, queue_name: str, callback: Callable, auto_ack: bool = False) -> None:
-        if not self._ensure_connection():
-            return
-            
-        try:
-            self.channel.basic_consume(
-                queue=queue_name,
-                on_message_callback=callback,
-                auto_ack=auto_ack
-            )
-            self.channel.start_consuming()
-        except Exception as e:
-            logger.error(f"Error consuming from queue {queue_name}: {e}")
-            
-    def start_consuming_in_thread(self, queue_name: str, callback: Callable, auto_ack: bool = False) -> threading.Thread:
+    def start_consuming_in_thread(self, topic: str, group_id: str, callback: Callable, auto_commit: bool = False) -> threading.Thread:
+        """Start consuming messages in a background thread"""
         def consume_wrapper():
             while True:
                 try:
-                    self.consume(queue_name, callback, auto_ack)
+                    self.consume(topic, group_id, callback, auto_commit)
                 except Exception as e:
                     logger.error(f"Error in consumer thread: {e}")
-                    time.sleep(self.reconnect_delay)
-                    if not self._ensure_connection():
-                        logger.error("Failed to reconnect, retrying...")
-                        time.sleep(self.reconnect_delay)
-        
+                    time.sleep(5)  # Wait before retrying
+                    
         thread = threading.Thread(target=consume_wrapper, daemon=True)
         thread.start()
         return thread
         
     def close(self) -> None:
-        if self.connection and not self.connection.is_closed:
-            self.connection.close()
+        """Close all connections"""
+        if self.producer:
+            self.producer.flush()
+            
+        for consumer in self.consumers.values():
+            consumer.close()
