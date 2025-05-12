@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 
 from console.database import engine, Base, get_db
 from console.config import settings
+from console.api.routes import droplets
 
 # Create tables
 Base.metadata.create_all(bind=engine)
@@ -39,6 +40,9 @@ async def health(db: Session = Depends(get_db)):
         "status": "healthy",
         "database": db_status
     }
+
+# Include routes
+app.include_router(droplets.router, prefix=f"{settings.API_V1_STR}/droplets", tags=["Droplets"])
 
 if __name__ == "__main__":
     import uvicorn
