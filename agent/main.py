@@ -9,6 +9,7 @@ import threading
 import requests
 from typing import Dict, Any, Optional
 from agent.executor.command import CommandExecutor
+from common.synchronization import TimeSynchronizer
 
 # Add the parent directory to the path so we can import common modules
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -30,6 +31,8 @@ class Agent:
         self.id = str(uuid.uuid4())
         self.hostname = socket.gethostname()
         self.ip_address = socket.gethostbyname(self.hostname)
+        self.time_sync = TimeSynchronizer()
+        self.time_sync.sync()  # Initial sync
         
         # Initialize messaging
         self.broker = MessageBroker(self.rabbitmq_url)
@@ -184,14 +187,15 @@ class Agent:
             # Send result
             self._send_command_result(command_id, result)
     
-    def _send_command_result(self, command_id: str, result: Dict[str, Any]) -> None:
+    def _send_command_result(self, execution_id: str, command_id: str, result: Dict[str, Any]) -> None:
         """
         Send command execution result
         """
         message = {
             "agent_id": self.id,
+            "execution_id": execution_id,
             "command_id": command_id,
-            "timestamp": time.time(),
+            "timestamp": self.time_sync.get_synchronized_time(),
             "result": result
         }
         
@@ -200,13 +204,102 @@ class Agent:
             routing_key=f"agent.{self.id}.result",
             message=message
         )
-
+    
     def _prepare_execution(self, command: Dict[str, Any]) -> None:
         """
         Prepare for test execution
         """
-        # Implementation will go here
-        pass
+        command_id = command.get('command_id')
+        execution_id = command.get('execution_id')
+        execution_time = command.get('execution_time')
+
+        if not execution_time:
+            logger.error(f"Invalid command, missing execution_time: {command}")
+            return
+
+        # Re-sync time
+        self.time_sync.sync()
+
+        # Store execution details
+        self.current_execution = {
+            'command_id': command_id,
+            'execution_id': execution_id,
+            'command': command.get('command'),
+            'parameters': command.get('parameters', {}),
+            'execution_time': execution_time
+        }
+
+        # Report readiness
+        self._send_status(AgentStatus.READY, {
+            "execution_id": execution_id,
+            "command_id": command_id,
+            "ready": True
+        })
+
+        # Schedule execution
+        current_time = self.time_sync.get_synchronized_time()
+        delay = execution_time - current_time
+
+        if delay > 0:
+            logger.info(f"Scheduled execution in {delay:.3f} seconds")
+            threading.Timer(delay, self._start_scheduled_execution).start()
+        else:
+            logger.warning(f"Execution time already passed, executing immediately")
+            self._start_scheduled_execution()
+
+    def _start_scheduled_execution(self) -> None:
+        """
+        Start a scheduled test execution
+        """
+        if not self.current_execution:
+            logger.error("No execution prepared")
+            return
+
+        execution_id = self.current_execution.get('execution_id')
+        command_id = self.current_execution.get('command_id')
+        command = self.current_execution.get('command')
+
+        # Update status
+        self._send_status(AgentStatus.BUSY, {
+            "execution_id": execution_id,
+            "command_id": command_id,
+            "executing": True,
+            "start_time": self.time_sync.get_synchronized_time()
+        })
+
+        # Execute the command
+        result = self.executor.execute(
+            command_id, 
+            command, 
+            self.current_execution.get('parameters', {}).get('timeout')
+        )
+
+        # Send initial status
+        status_details = {
+            "execution_id": execution_id,
+            "command_id": command_id,
+            "execution_status": result["status"]
+        }
+        if "message" in result:
+            status_details["message"] = result["message"]
+
+        self._send_status(AgentStatus.BUSY, status_details)
+
+        # If execution is successful, wait for it to complete
+        if result["status"] == "started":
+            # Wait for result
+            while True:
+                time.sleep(1)
+                result = self.executor.get_result(command_id)
+                if result:
+                    break
+                
+            # Send result
+            self._send_command_result(execution_id, command_id, result)
+
+        # Clear current execution
+        self.current_execution = None
+        self._send_status(AgentStatus.READY)
         
     def _start_execution(self, command: Dict[str, Any]) -> None:
         """

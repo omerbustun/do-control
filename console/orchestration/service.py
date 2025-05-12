@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from console.api.models.db_models import DBTestConfiguration, DBTestExecution, DBDroplet
 from console.messaging.service import MessagingService
 from common.models import TestConfiguration, TestExecution, ExecutionStatus
+from common.synchronization import TimeSynchronizer
 
 logger = logging.getLogger(__name__)
 
@@ -15,6 +16,7 @@ class OrchestrationService:
     def __init__(self, db: Session, messaging_service: Optional[MessagingService] = None):
         self.db = db
         self.messaging_service = messaging_service or MessagingService()
+        self.time_sync = TimeSynchronizer()
     
     def create_test_config(self, config: TestConfiguration) -> TestConfiguration:
         """Create a new test configuration"""
@@ -66,6 +68,12 @@ class OrchestrationService:
         self.db.add(execution)
         self.db.commit()
         
+        # Synchronize time
+        self.time_sync.sync()
+        
+        # Calculate execution time (5 seconds in the future)
+        execution_time = self.time_sync.calculate_execution_time(5000)
+        
         # Prepare command for distribution
         command = {
             "command_id": str(uuid.uuid4()),
@@ -75,8 +83,8 @@ class OrchestrationService:
             "parameters": config.parameters,
             "target_droplets": config.target_droplets,
             "duration": config.duration,
-            "preparation_time": 10,  # Allow 10 seconds for preparation
-            "execution_time": None  # Will be set when all agents are ready
+            "preparation_time": 5,  # 5 seconds for preparation
+            "execution_time": execution_time  # Synchronized execution time
         }
         
         # Distribute command to target agents
