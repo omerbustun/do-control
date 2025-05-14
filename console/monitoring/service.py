@@ -20,10 +20,9 @@ class MonitoringService:
         """Set up handler for incoming metrics"""
         self.messaging_service.register_metrics_handler(self._handle_metrics)
     
-    def _handle_metrics(self, ch, method, properties, body):
+    def _handle_metrics(self, routing_key: str, metric_data: Dict[str, Any]):
         """Process incoming metrics messages"""
         try:
-            metric_data = json.loads(body)
             agent_id = metric_data.get('agent_id')
             timestamp = metric_data.get('timestamp')
             metrics = metric_data.get('metrics', {})
@@ -51,49 +50,21 @@ class MonitoringService:
         except Exception as e:
             logger.error(f"Error handling metrics: {e}")
     
-    def _store_in_influxdb(self, agent_id, timestamp, metrics):
+    def _store_in_influxdb(self, agent_id: str, timestamp: float, metrics: Dict[str, Any]):
         """Store metrics in InfluxDB"""
-        if not self.influxdb:
-            return
-        
-        # Convert timestamp to datetime
-        dt = datetime.fromtimestamp(timestamp)
-        
-        # Flatten and store metrics
-        for category, values in metrics.items():
-            if isinstance(values, dict):
-                for key, value in values.items():
-                    self._write_influxdb_point(agent_id, category, key, value, dt)
-            else:
-                self._write_influxdb_point(agent_id, category, category, values, dt)
-    
-    def _write_influxdb_point(self, agent_id, category, field_name, value, timestamp):
-        """Write a single point to InfluxDB"""
-        try:
-            point = {
-                "measurement": "do_control_metrics",
-                "tags": {
-                    "agent_id": agent_id,
-                    "category": category
-                },
-                "time": timestamp.isoformat(),
-                "fields": {
-                    field_name: float(value) if isinstance(value, (int, float)) else str(value)
-                }
-            }
-            self.influxdb.write_points([point])
-        except Exception as e:
-            logger.error(f"Error writing to InfluxDB: {e}")
+        # Implementation will depend on InfluxDB client
+        pass
     
     def _prune_metrics_buffer(self):
-        """Remove old metrics from in-memory buffer"""
-        now = datetime.now()
-        cutoff = now - timedelta(minutes=10)  # Keep 10 minutes of data
+        """Remove old metrics from the buffer to prevent memory issues"""
+        # Keep only metrics from the last hour
+        cutoff_time = datetime.now() - timedelta(hours=1)
+        cutoff_timestamp = cutoff_time.timestamp()
         
-        for agent_id in list(self.metrics_buffer.keys()):
+        for agent_id in self.metrics_buffer:
             self.metrics_buffer[agent_id] = [
-                m for m in self.metrics_buffer[agent_id]
-                if datetime.fromtimestamp(m['timestamp']) > cutoff
+                entry for entry in self.metrics_buffer[agent_id]
+                if entry['timestamp'] > cutoff_timestamp
             ]
     
     def get_agent_metrics(self, agent_id, lookback_minutes=5):

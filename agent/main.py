@@ -25,11 +25,7 @@ logging.basicConfig(
 logger = logging.getLogger("do-control-agent")
 
 class Agent:
-    def __init__(self, console_url: str, kafka_bootstrap_servers: str,
-                 kafka_security_protocol: str = "PLAINTEXT",
-                 kafka_sasl_mechanism: str = "PLAIN",
-                 kafka_sasl_username: str = "",
-                 kafka_sasl_password: str = ""):
+    def __init__(self, console_url: str, rabbitmq_url: str):
         self.console_url = console_url
         self.id = str(uuid.uuid4())
         self.hostname = socket.gethostname()
@@ -38,13 +34,7 @@ class Agent:
         self.time_sync.sync()  # Initial sync
         
         # Initialize messaging
-        self.broker = MessageBroker(
-            bootstrap_servers=kafka_bootstrap_servers,
-            security_protocol=kafka_security_protocol,
-            sasl_mechanism=kafka_sasl_mechanism,
-            sasl_username=kafka_sasl_username,
-            sasl_password=kafka_sasl_password
-        )
+        self.broker = MessageBroker(rabbitmq_url=rabbitmq_url)
         
         # Agent state
         self.status = AgentStatus.READY
@@ -59,10 +49,18 @@ class Agent:
         logger.info(f"Starting agent {self.id} on {self.hostname} ({self.ip_address})")
         
         # Register with console
-        self._register_with_console()
+        try:
+            self._register_with_console()
+        except Exception as e:
+            logger.error(f"Failed to register with console, exiting: {e}")
+            sys.exit(1)
         
         # Set up messaging
-        self._setup_messaging()
+        try:
+            self._setup_messaging()
+        except Exception as e:
+            logger.error(f"Failed to set up messaging, exiting: {e}")
+            sys.exit(1)
         
         # Start metrics collection
         self._start_metrics_collection()
@@ -77,20 +75,30 @@ class Agent:
             
     def _register_with_console(self) -> None:
         """Register agent with the console"""
-        try:
-            response = requests.post(
-                f"{self.console_url}/api/v1/agents/register",
-                json={
-                    "id": self.id,
-                    "hostname": self.hostname,
-                    "ip_address": self.ip_address
-                }
-            )
-            response.raise_for_status()
-            logger.info("Successfully registered with console")
-        except Exception as e:
-            logger.error(f"Failed to register with console: {e}")
-            raise
+        max_retries = 30  # 5 minutes total with 10s delay
+        retry_count = 0
+        retry_delay = 10  # seconds
+
+        while retry_count < max_retries:
+            try:
+                response = requests.post(
+                    f"{self.console_url}/api/v1/agents/register",
+                    json={
+                        "id": self.id,
+                        "hostname": self.hostname,
+                        "ip_address": self.ip_address
+                    }
+                )
+                response.raise_for_status()
+                logger.info("Successfully registered with console")
+                return
+            except Exception as e:
+                retry_count += 1
+                if retry_count >= max_retries:
+                    logger.error(f"Failed to register with console after {max_retries} attempts: {e}")
+                    raise
+                logger.warning(f"Failed to register with console (attempt {retry_count}/{max_retries}): {e}")
+                time.sleep(retry_delay)
             
     def _setup_messaging(self) -> None:
         """Set up messaging and start listening"""
@@ -212,7 +220,8 @@ class Agent:
                     "cpu_percent": self._get_cpu_percent(),
                     "memory_percent": self._get_memory_percent(),
                     "disk_percent": self._get_disk_percent(),
-                    "network": self._get_network_stats()
+                    "network": self._get_network_stats(),
+                    "time_sync": self.time_sync.get_sync_status()
                 }
                 
                 # Send metrics
@@ -221,7 +230,7 @@ class Agent:
                     key=f"metrics.system.{self.id}",
                     message={
                         "agent_id": self.id,
-                        "timestamp": time.time(),
+                        "timestamp": self.time_sync.get_synchronized_time(),
                         "metrics": metrics
                     }
                 )
@@ -379,19 +388,11 @@ class Agent:
 if __name__ == "__main__":
     # Get configuration from environment
     console_url = os.environ.get("CONSOLE_URL", "http://localhost:8000")
-    kafka_bootstrap_servers = os.environ.get("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
-    kafka_security_protocol = os.environ.get("KAFKA_SECURITY_PROTOCOL", "PLAINTEXT")
-    kafka_sasl_mechanism = os.environ.get("KAFKA_SASL_MECHANISM", "PLAIN")
-    kafka_sasl_username = os.environ.get("KAFKA_SASL_USERNAME", "")
-    kafka_sasl_password = os.environ.get("KAFKA_SASL_PASSWORD", "")
+    rabbitmq_url = os.environ.get("RABBITMQ_URL", "amqp://guest:guest@localhost:5672/")
     
     # Create and start agent
     agent = Agent(
         console_url=console_url,
-        kafka_bootstrap_servers=kafka_bootstrap_servers,
-        kafka_security_protocol=kafka_security_protocol,
-        kafka_sasl_mechanism=kafka_sasl_mechanism,
-        kafka_sasl_username=kafka_sasl_username,
-        kafka_sasl_password=kafka_sasl_password
+        rabbitmq_url=rabbitmq_url
     )
     agent.start()
