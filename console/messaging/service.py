@@ -8,11 +8,7 @@ logger = logging.getLogger(__name__)
 class MessagingService:
     def __init__(self):
         self.broker = MessageBroker(
-            bootstrap_servers=settings.KAFKA_BOOTSTRAP_SERVERS,
-            security_protocol=settings.KAFKA_SECURITY_PROTOCOL,
-            sasl_mechanism=settings.KAFKA_SASL_MECHANISM,
-            sasl_username=settings.KAFKA_SASL_USERNAME,
-            sasl_password=settings.KAFKA_SASL_PASSWORD
+            rabbitmq_url=settings.RABBITMQ_URL
         )
         
     def send_command(self, command: Dict[str, Any]) -> bool:
